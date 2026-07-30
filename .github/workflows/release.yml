@@ -1,0 +1,115 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 已存在的版本標籤，例如 v0.1.0
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  verify-version:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Verify tag and package versions
+        env:
+          RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          VERSION="${RELEASE_TAG#v}"
+          PACKAGE_VERSION="$(node -p "require('./package.json').version")"
+          CARGO_VERSION="$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].version')"
+          test "$RELEASE_TAG" = "v$VERSION"
+          test "$PACKAGE_VERSION" = "$VERSION"
+          test "$CARGO_VERSION" = "$VERSION"
+
+  build:
+    needs: verify-version
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            os: macos-15
+            ext: tar.xz
+          - target: x86_64-apple-darwin
+            os: macos-15-intel
+            ext: tar.xz
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-24.04
+            ext: tar.xz
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-24.04-arm
+            ext: tar.xz
+          - target: x86_64-pc-windows-msvc
+            os: windows-2025
+            ext: zip
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+      - name: Configure Rust target
+        shell: bash
+        run: |
+          rustup update stable
+          rustup default stable
+          rustup target add "${{ matrix.target }}"
+      - run: cargo build --release --locked --target ${{ matrix.target }}
+      - name: Package binary
+        shell: pwsh
+        run: |
+          $binary = "target/${{ matrix.target }}/release/ado-audit-log-exporter"
+          if ("${{ runner.os }}" -eq "Windows") {
+            $binary = "$binary.exe"
+          }
+          if (!(Test-Path $binary)) {
+            throw "Missing built binary: $binary"
+          }
+
+          New-Item -ItemType Directory -Force dist | Out-Null
+          $archive = "dist/ado-audit-log-exporter-${{ matrix.target }}.${{ matrix.ext }}"
+          if ("${{ matrix.ext }}" -eq "zip") {
+            Compress-Archive -Path $binary -DestinationPath $archive -Force
+          } else {
+            tar -cJf $archive -C (Split-Path $binary) (Split-Path $binary -Leaf)
+          }
+
+          $hash = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $(Split-Path $archive -Leaf)" | Out-File "$archive.sha256" -Encoding ascii
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ado-audit-log-exporter-${{ matrix.target }}
+          path: dist/*
+
+  publish-release:
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Publish GitHub Release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" artifacts/* --clobber
+          else
+            gh release create "$TAG" artifacts/* --verify-tag --generate-notes
+          fi

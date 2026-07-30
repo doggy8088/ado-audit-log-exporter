@@ -1,0 +1,42 @@
+{
+  "name": "ado-audit-log-exporter",
+  "version": "0.1.0",
+  "description": "跨平台 Azure DevOps 稽核記錄匯出工具，提供 Rust library 與原生 CLI。",
+  "bin": {
+    "ado-audit-log-exporter": "npm/cli.cjs"
+  },
+  "scripts": {
+    "postinstall": "node npm/postinstall.cjs",
+    "test": "node --test tests/*.test.cjs",
+    "prepublishOnly": "npm test && npm pack --dry-run && node npm/prepublish-check.cjs"
+  },
+  "files": [
+    "npm/cli.cjs",
+    "npm/postinstall.cjs",
+    "npm/prepublish-check.cjs",
+    "README.md",
+    "LICENSE"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/doggy8088/ado-audit-log-exporter.git"
+  },
+  "homepage": "https://github.com/doggy8088/ado-audit-log-exporter#readme",
+  "bugs": {
+    "url": "https://github.com/doggy8088/ado-audit-log-exporter/issues"
+  },
+  "keywords": [
+    "rust",
+    "cli",
+    "azure-devops",
+    "audit-log"
+  ],
+  "author": "Will Huang",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.14.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

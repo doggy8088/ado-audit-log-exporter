@@ -1,160 +1,122 @@
 # Azure DevOps 稽核記錄匯出工具
 
-`ado-audit-log-exporter` 是一個只使用 Python 標準函式庫的命令列工具，透過 Azure DevOps Audit REST API 匯出組織層級稽核事件。
+透過 Azure DevOps Audit Log REST API 匯出組織層級的稽核記錄。專案同時提供：
 
-**工具不使用 Chrome、其他瀏覽器或網頁自動化，所有事件都直接從 Azure DevOps REST API 取得。**
+- Rust 原生 CLI
+- 可供 Rust 專案引用的非同步 library
+- 從 GitHub Releases 下載原生執行檔的 npm 薄包裝
+- JSON、JSON Lines 與 CSV 三種輸出格式
+- macOS、Linux 與 Windows 的 x64 或 ARM64 執行檔
 
-預設設定：
+**工具只透過 REST API 讀取稽核記錄，不使用 Chrome，也不會把 PAT 寫入命令列參數、輸出檔或日誌。**
 
-| 項目 | 預設值 |
-|---|---|
-| Azure DevOps 組織 | `miniasp` |
-| 查詢期間 | 執行時刻往前 90 天 |
-| API 版本 | `7.1-preview.1` |
-| 每頁事件數 | 200 |
-| 輸出格式 | JSON Lines |
-| 存取事件聚合 | 關閉，保留個別 `AuditLog.AccessLog` |
-| HTTP 逾時 | 30 秒 |
-| 重試次數 | 4 |
+目前原始碼版本為 `0.1.0`。**初版 GitHub Release、npm 套件與 crates.io crate 尚待維護者依發布文件手動發布。**
 
 * * *
 
-## 功能
+## 支援平台
 
-- 直接呼叫 `auditservice.dev.azure.com`。
-- 支援 Microsoft Entra Bearer 權杖。
-- 預設從 `AZURE_DEVOPS_EXT_PAT` 讀取 PAT。
-- 保留 `ADO_PAT` 相容性。
-- 自動處理 `continuationToken`，取得所有分頁。
-- 支援 JSON、JSON Lines 與 CSV。
-- JSON 與 JSON Lines 保留完整 API 事件。
-- CSV 以 `extraFields` 保存 API 未知欄位。
-- HTTP 429、HTTP 5xx 與網路錯誤自動重試。
-- 偵測 continuation token 重複，避免無限迴圈。
-- 檔案輸出先寫入安全暫存檔，成功後再原子替換。
-- 既有檔案預設不覆寫。
-- 進度與資料分開輸出，方便命令列管線處理。
-- 同時相容最上層與 `value` 包裝的 `AuditLogQueryResult`。
+| 作業系統 | CPU | Rust target | GitHub Release 資產 |
+|---|---|---|---|
+| macOS | Apple Silicon | `aarch64-apple-darwin` | `.tar.xz` 與 `.sha256` |
+| macOS | Intel x64 | `x86_64-apple-darwin` | `.tar.xz` 與 `.sha256` |
+| Linux | ARM64 | `aarch64-unknown-linux-gnu` | `.tar.xz` 與 `.sha256` |
+| Linux | x64 | `x86_64-unknown-linux-gnu` | `.tar.xz` 與 `.sha256` |
+| Windows | x64 | `x86_64-pc-windows-msvc` | `.zip` 與 `.sha256` |
+
+npm 套件本身不包含原生執行檔。安裝時會依平台從同版本的 GitHub Release 下載壓縮檔，驗證 SHA-256 後再安裝，因此 npm 套件維持精簡。
 
 * * *
 
-## 系統需求
+## 必要條件
 
-- Python 3.9 以上。
-- `make`，若只直接執行 Python 可省略。
-- 可連線至 `https://auditservice.dev.azure.com`。
-- Azure DevOps Services 組織。
-- 權杖代表的身分具有組織層級 `View audit log` 權限。
-- PAT 使用者需授予 `Read Audit Log`，API 範圍名稱為 `vso.auditlog`。
+- Azure DevOps Services 組織已啟用 Auditing
+- 呼叫身分具有 `View audit log` 權限
+- 使用 PAT 時，PAT 具有 `vso.auditlog` scope
+- 稽核資料仍在 Azure DevOps 保留期限內
 
-工具沒有第三方 Python 套件相依性。
-
-檢查環境：
-
-```sh
-python3 --version
-make --version
-```
+Microsoft 文件指出 Azure DevOps 稽核記錄保留 90 天，而且 Auditing 只適用於連接 Microsoft Entra ID 的 Azure DevOps Services 組織，不適用於內部部署 Azure DevOps Server。長期保存應將匯出檔存入受控儲存空間，或採用 Audit Streaming。
 
 * * *
 
-## 快速開始
+## 安裝
 
-### 使用 PAT
+### npm
 
-將 PAT 放入 Azure DevOps CLI 慣用的環境變數：
-
-```sh
-export AZURE_DEVOPS_EXT_PAT='replace-with-your-pat'
-```
-
-執行預設 JSON Lines 匯出：
+初版發布完成後可執行：
 
 ```sh
-make export
+npm install --global ado-audit-log-exporter
+ado-audit-log-exporter --version
 ```
 
-預設產生：
+需要 Node.js `22.14.0` 以上。npm 安裝程序另需能連線至 GitHub Releases，且系統具有：
 
-```text
-ado-audit.jsonl
-```
+- macOS 或 Linux：`tar` 與 xz 支援
+- Windows：PowerShell `Expand-Archive`
 
-### 使用 Microsoft Entra
+### Cargo
 
-先登入 Azure CLI：
+初版發布至 crates.io 後可執行：
 
 ```sh
-az login
+cargo install ado-audit-log-exporter --locked
 ```
 
-由 Makefile 取得短效 Azure DevOps 權杖並匯出：
+從目前原始碼安裝：
 
 ```sh
-make export-entra
+git clone https://github.com/doggy8088/ado-audit-log-exporter.git
+cd ado-audit-log-exporter
+cargo install --path . --locked
 ```
 
-這個目標只在子程序環境內設定 `ADO_ACCESS_TOKEN`，不將權杖寫入專案檔案。
+### GitHub Release
+
+可直接從 GitHub Release 下載對應平台的壓縮檔與 `.sha256`。解壓縮後得到單一 `ado-audit-log-exporter` 執行檔；Windows 檔名為 `ado-audit-log-exporter.exe`。
 
 * * *
 
-## 驗證方式與優先順序
+## 驗證
 
-支援的環境變數：
-
-| 環境變數 | 類型 | 說明 |
-|---|---|---|
-| `AZURE_DEVOPS_EXT_PAT` | PAT | 預設 PAT 來源 |
-| `ADO_PAT` | PAT | 相容性備援 |
-| `ADO_ACCESS_TOKEN` | Microsoft Entra | Bearer 存取權杖 |
-
-PAT 選擇順序：
+**預設讀取 `AZURE_DEVOPS_EXT_PAT` 環境變數。** 工具支援以下順序：
 
 1. `AZURE_DEVOPS_EXT_PAT`
 2. `ADO_PAT`
+3. `ADO_ACCESS_TOKEN`
 
-若兩個 PAT 變數同時存在，使用 `AZURE_DEVOPS_EXT_PAT`。若任何 PAT 與 `ADO_ACCESS_TOKEN` 同時存在，工具會停止，避免驗證身分不明確。
+前兩項是 PAT；第三項是 Microsoft Entra access token。若同時設定任一 PAT 與 `ADO_ACCESS_TOKEN`，工具會中止，避免使用到非預期身分。
 
-手動取得 Entra 權杖：
+macOS 或 Linux：
 
 ```sh
-export ADO_ACCESS_TOKEN="$(
-  az account get-access-token \
-    --resource 499b84ac-1321-427f-aa17-267ca6975798 \
-    --query accessToken \
-    --output tsv
-)"
+export AZURE_DEVOPS_EXT_PAT='你的 PAT'
 ```
 
-**權杖只應存在於環境或祕密管理系統，不要放入命令列參數、原始碼、Git 或輸出檔。**
+PowerShell：
 
-詳細說明：[驗證與權限](docs/authentication.md)。
+```powershell
+$env:AZURE_DEVOPS_EXT_PAT = '你的 PAT'
+```
+
+請勿把 token 寫入 Makefile、shell 歷程、`.env`、Git 設定或命令列參數。完整說明見 [驗證文件](docs/authentication.md)。
 
 * * *
 
-## 常用匯出方式
+## 快速使用
 
-### 匯出 JSON Lines
-
-```sh
-make export-jsonl
-```
-
-### 匯出 JSON
+匯出 `miniasp` 組織在指定時間範圍內的 CSV：
 
 ```sh
-make export-json
+ado-audit-log-exporter \
+  --organization miniasp \
+  --start-time 2026-06-01T00:00:00Z \
+  --end-time 2026-07-01T00:00:00Z \
+  --format csv \
+  --output miniasp-ado-audit-june.csv
 ```
 
-### 匯出 CSV
-
-```sh
-make export-csv
-```
-
-### 匯出指定月份
-
-以下命令匯出 2026 年 6 月：
+使用 Makefile：
 
 ```sh
 make export-csv \
@@ -163,310 +125,177 @@ make export-csv \
   OUTPUT=miniasp-ado-audit-june.csv
 ```
 
-### 允許覆寫
+沒有指定時間時，預設查詢執行當下之前 30 天到執行當下。沒有指定格式時，預設輸出 `ado-audit.jsonl`。
+
+既有輸出檔不會被覆寫。如需明確覆寫：
 
 ```sh
-make export-csv \
-  OUTPUT=miniasp-ado-audit-june.csv \
-  OVERWRITE=1
-```
-
-### 指定其他組織
-
-```sh
-make export \
-  ORGANIZATION=contoso \
-  OUTPUT=contoso-ado-audit.jsonl
-```
-
-### 聚合存取事件
-
-Azure DevOps 可聚合 `AuditLog.AccessLog`。工具預設保留個別事件；若要採用服務端聚合：
-
-```sh
-make export AGGREGATE_ACCESS_LOG=1
-```
-
-* * *
-
-## Makefile
-
-列出全部目標與變數：
-
-```sh
-make help
-```
-
-目標：
-
-| 目標 | 說明 |
-|---|---|
-| `make export` | 使用環境權杖與指定格式匯出 |
-| `make export-entra` | 由 Azure CLI 取得短效權杖後匯出 |
-| `make export-json` | 匯出 JSON |
-| `make export-jsonl` | 匯出 JSON Lines |
-| `make export-csv` | 匯出 CSV |
-| `make test` | 執行單元測試 |
-| `make check` | 執行編譯檢查與單元測試 |
-| `make help` | 顯示說明 |
-
-常用變數：
-
-| 變數 | 預設值 |
-|---|---|
-| `ORGANIZATION` | `miniasp` |
-| `FORMAT` | `jsonl` |
-| `OUTPUT` | `ado-audit.$(FORMAT)` |
-| `START_TIME` | 空白，使用 90 天前 |
-| `END_TIME` | 空白，使用目前時間 |
-| `BATCH_SIZE` | `200` |
-| `TIMEOUT` | `30` |
-| `RETRIES` | `4` |
-| `AGGREGATE_ACCESS_LOG` | `0` |
-| `OVERWRITE` | `0` |
-| `PYTHON` | `python3` |
-
-完整參考：[命令參考](docs/command-reference.md)。
-
-* * *
-
-## 直接執行 Python
-
-基本用法：
-
-```sh
-python3 export_ado_audit_logs.py \
+ado-audit-log-exporter \
   --organization miniasp \
   --format jsonl \
-  --output ado-audit.jsonl
+  --output ado-audit.jsonl \
+  --overwrite
 ```
-
-指定完整參數：
-
-```sh
-python3 export_ado_audit_logs.py \
-  --organization miniasp \
-  --start-time 2026-06-01T00:00:00Z \
-  --end-time 2026-07-01T00:00:00Z \
-  --format csv \
-  --output miniasp-ado-audit-june.csv \
-  --batch-size 200 \
-  --timeout 60 \
-  --retries 6
-```
-
-查看即時參數：
-
-```sh
-python3 export_ado_audit_logs.py --help
-```
-
-選項概要：
-
-| 選項 | 說明 |
-|---|---|
-| `--organization` | Azure DevOps 組織名稱 |
-| `--start-time` | RFC 3339 開始時間 |
-| `--end-time` | RFC 3339 結束時間 |
-| `--format` | `json`、`jsonl` 或 `csv` |
-| `--output` | 檔案路徑或 `-` |
-| `--batch-size` | 每頁要求事件數 |
-| `--aggregate-access-log` | 允許服務聚合存取事件 |
-| `--timeout` | HTTP 要求逾時秒數 |
-| `--retries` | 可重試錯誤的重試次數 |
-| `--overwrite` | 允許替換既有檔案 |
 
 * * *
 
-## 輸出格式
+## 可取得的記錄格式
 
-### JSON
+| 格式 | CLI 值 | 結構 | 適用情境 |
+|---|---|---|---|
+| JSON | `json` | 一個 JSON array | 完整交換、API 或程式載入 |
+| JSON Lines | `jsonl` | 每行一個 JSON object | 串流處理、大型資料集、`jq` |
+| CSV | `csv` | 固定欄位表格 | Excel、試算表、SIEM 前處理 |
 
-單一 JSON 陣列，保留事件全部欄位。
-
-```json
-[
-  {
-    "id": "event-id",
-    "timestamp": "2026-06-01T12:34:56.789Z",
-    "actionId": "Project.CreateCompleted",
-    "data": {
-      "ProjectName": "sample"
-    }
-  }
-]
-```
-
-### JSON Lines
-
-每行一個完整事件物件，適合大量資料與串流處理。
-
-```jsonl
-{"id":"event-1","actionId":"Project.CreateCompleted","data":{"ProjectName":"sample"}}
-{"id":"event-2","actionId":"Git.CreateRepo","data":{"RepoName":"sample-repo"}}
-```
-
-### CSV
-
-CSV 固定輸出 25 欄。主要欄位：
+Azure DevOps 常見欄位包括：
 
 - 識別：`id`、`correlationId`、`activityId`
 - 時間與動作：`timestamp`、`actionId`、`area`、`category`
-- 操作者：`actorCUID`、`actorClientId`、`actorUserId`、`actorUPN`
-- 連線：`authenticationMechanism`、`ipAddress`、`userAgent`
-- 範圍：`scopeType`、`scopeId`、`projectId`、`projectName`
-- 動作資料：`data`
-- 未知欄位：`extraFields`
+- 行為者：`actorUserId`、`actorUPN`、`actorDisplayName`
+- 來源：`ipAddress`、`userAgent`、`authenticationMechanism`
+- 範圍：`scopeType`、`scopeDisplayName`、`scopeId`
+- 詳細資料：`details`、`data`
 
-`data` 與 `extraFields` 在 CSV 中保存為緊湊 JSON 字串。不同 `actionId` 的 `data` 結構不同。
+**Azure DevOps 日後新增的未知欄位不會被丟棄。** JSON 與 JSON Lines 會保留原欄位；CSV 會將未知欄位寫入 `extraFields` JSON 欄。
 
-完整欄位表：[輸出格式](docs/output-formats.md)。
+REST API 官方範例將 `AuditLogQueryResult` 包在最外層 `value` object 中，但實際服務也可能直接回傳結果 object。client 同時接受這兩種結構，另外相容 array 型別的 `value`，避免因固定要求 `value` 為 object 而匯出失敗。
 
-* * *
-
-## API 行為
-
-工具呼叫：
-
-```text
-GET https://auditservice.dev.azure.com/{organization}/_apis/audit/auditlog
-```
-
-查詢參數：
-
-- `startTime`
-- `endTime`
-- `batchSize`
-- `continuationToken`
-- `skipAggregation`
-- `api-version=7.1-preview.1`
-
-Azure DevOps 回傳 `hasMore=true` 時，工具將 `continuationToken` URL encode 後要求下一頁，直到 `hasMore` 為 false。
-
-工具支援兩種實際可見的回應結構：
-
-1. 最上層 `AuditLogQueryResult`。
-2. `value` 包裝的 `AuditLogQueryResult`。
-
-完整流程：[API 與實作](docs/api-and-implementation.md)。
+完整欄位與資料型別說明見 [輸出格式](docs/output-formats.md)。
 
 * * *
 
-## 檔案安全與失敗處理
+## Rust library
 
-指定 `--output PATH` 時：
+`ado_audit_log_exporter` 提供非同步分頁 API：
 
-1. 在目標目錄建立隨機暫存檔。
-2. 將所有分頁逐筆寫入。
-3. 全部成功後以原子替換移至目標路徑。
-4. 失敗時刪除暫存檔。
+```rust
+use ado_audit_log_exporter::{
+    AuditClient, AuditQuery, Authentication,
+};
+use chrono::{Duration, Utc};
 
-因此 API 中途失敗不會留下表面正常但內容不完整的目標檔。標準輸出模式不具備此保護。
+# async fn export() -> Result<(), ado_audit_log_exporter::AuditError> {
+let authentication = Authentication::from_env()?;
+let client = AuditClient::new("miniasp", authentication)?;
+let query = AuditQuery::new(
+    Utc::now() - Duration::days(1),
+    Utc::now(),
+)?;
+let mut pager = client.pager(query);
 
-名稱包含 `ado-audit` 的 JSON、JSON Lines 與 CSV 已列入 `.gitignore`。提交前仍應檢查：
-
-```sh
-git status --short --ignored
-git diff --cached --name-only
+while let Some(page) = pager.next_page().await? {
+    for entry in page.entries {
+        println!("{:?}", entry.action_id);
+    }
+}
+# Ok(())
+# }
 ```
+
+公開 API 包含：
+
+- `Authentication`
+- `AuditClient`
+- `AuditQuery`
+- `AuditLogPager`
+- `AuditPage`
+- `AuditLogEntry`
+- `RetryPolicy`
+- `AuditError`
+
+詳細整合方式見 [Rust library 使用說明](docs/rust-library.md)。
 
 * * *
 
-## 測試
+## Makefile 目標
 
-執行全部單元測試：
+| 目標 | 用途 |
+|---|---|
+| `make build` | 建置 release 原生執行檔 |
+| `make install` | 透過 Cargo 安裝本機 CLI |
+| `make export` | 匯出指定格式 |
+| `make export-entra` | 透過 Azure CLI 取得暫時 access token |
+| `make export-json` | 匯出 JSON |
+| `make export-jsonl` | 匯出 JSON Lines |
+| `make export-csv` | 匯出 CSV |
+| `make test` | 執行 Rust 與 npm 測試 |
+| `make check` | 執行完整本機品質檢查 |
+| `make release-asset-check` | 確認目前版本的 Release 資產齊全 |
 
-```sh
-make test
-```
+可用 `make help` 查看變數。
 
-執行編譯檢查與測試：
+* * *
+
+## CI/CD 與發布
+
+GitHub Actions 包含三個工作流程：
+
+- `ci.yml`：格式、Clippy、Rust 測試、npm 測試與封裝檢查
+- `release.yml`：由 `v*.*.*` 標籤建置五個平台，產生 SHA-256 並建立 GitHub Release
+- `npm-publish.yml`：由 GitHub Release 事件透過 npm trusted publishing 發布
+
+**工作流程不使用 `NPM_TOKEN` 或 `NODE_AUTH_TOKEN`。** npm 發布透過 GitHub Actions OIDC 取得短效憑證，且 npm 會自動產生 provenance。
+
+由於 npm 必須先有套件頁面才能設定 Trusted Publisher，初版需要維護者先手動發布 npm 套件，再到 npm 設定 Trusted Publisher。完整且依序的操作見 [初版發布手冊](docs/releasing.md)。
+
+* * *
+
+## 安全設計
+
+- 憑證只從環境變數讀取
+- `Authentication` 的 Rust `Debug` 輸出會遮罩 token
+- HTTP client 的 `Debug` 不輸出驗證標頭
+- 匯出檔以同目錄暫存檔寫入，成功後才原子替換
+- 預設拒絕覆寫現有檔案
+- npm 安裝強制核對 SHA-256
+- npm 發布工作流程採 OIDC，儲存庫不需要長效 npm token
+- `.gitignore` 排除匯出記錄、本機 binary、`.env` 與封裝產物
+
+稽核記錄本身可能含帳號、IP、User-Agent、資源名稱與管理操作內容，應視為敏感資料。見 [安全與操作](docs/security-and-operations.md)。
+
+* * *
+
+## 開發與驗證
+
+最低支援 Rust 版本為 `1.85`，npm 發布要求 Node.js `22.14.0` 以上。
 
 ```sh
 make check
 ```
 
-測試範圍包括：
+等同執行主要檢查：
 
-- PAT 與 Bearer 標頭。
-- `AZURE_DEVOPS_EXT_PAT` 優先順序。
-- 驗證類型衝突。
-- RFC 3339 與 UTC 正規化。
-- 直接與 `value` 包裝回應。
-- continuation token 分頁與 URL encoding。
-- HTTP 429 重試。
-- 非預期回應的安全錯誤摘要。
-- JSON Lines 巢狀資料。
-- CSV `data` 與未知欄位。
-
-測試不需真實 Azure DevOps 權杖，也不會連線至 Azure DevOps。
-
-* * *
-
-## 限制
-
-- Azure DevOps Audit API 目前仍是 preview。
-- Azure DevOps Services 稽核事件只保留 90 天。
-- Auditing 僅適用於以 Microsoft Entra ID 支援的 Azure DevOps Services 組織。
-- Azure DevOps 不記錄 Microsoft Entra 登入事件。
-- Microsoft Entra 群組內部的成員異動不一定出現在 Azure DevOps 稽核記錄。
-- 工具不自動切割超過 90 天的時間範圍。
-- 工具不自動去重；重疊時間窗應依事件 `id` 去重。
-- 工具不建立 Audit Streaming。
-- 工具不負責長期保存、SIEM 匯入或權杖輪替。
-
-正式維運建議：[安全與維運](docs/security-and-operations.md)。
-
-* * *
-
-## 專案結構
-
-```text
-.
-├── .gitignore
-├── Makefile
-├── README.md
-├── docs/
-│   ├── api-and-implementation.md
-│   ├── authentication.md
-│   ├── command-reference.md
-│   ├── getting-started.md
-│   ├── index.md
-│   ├── output-formats.md
-│   ├── references.md
-│   ├── security-and-operations.md
-│   └── troubleshooting.md
-├── export_ado_audit_logs.py
-└── test_export_ado_audit_logs.py
+```sh
+cargo fmt --all -- --check
+cargo clippy --all-targets --all-features -- -D warnings
+cargo test --all-features --locked
+npm ci --ignore-scripts
+npm test
+npm pack --dry-run
 ```
+
+在 GitHub Release 尚未建立前，`make release-asset-check` 預期失敗；這項失敗表示 npm 發布防護正在阻止缺少原生執行檔的版本上架。
 
 * * *
 
 ## 文件
 
-| 文件 | 主題 |
-|---|---|
-| [文件中心](docs/index.md) | 文件導覽與工具範圍 |
-| [快速開始](docs/getting-started.md) | 第一次匯出 |
-| [驗證與權限](docs/authentication.md) | PAT、Entra 與 Azure DevOps 權限 |
-| [命令參考](docs/command-reference.md) | Makefile 與 Python 選項 |
-| [輸出格式](docs/output-formats.md) | 格式與欄位 |
-| [API 與實作](docs/api-and-implementation.md) | REST、分頁、重試與寫入 |
-| [疑難排解](docs/troubleshooting.md) | 錯誤處理 |
-| [安全與維運](docs/security-and-operations.md) | 保存、排程與安全 |
-| [參考資料](docs/references.md) | 官方原始連結 |
+- [文件索引](docs/index.md)
+- [快速開始](docs/getting-started.md)
+- [驗證與權限](docs/authentication.md)
+- [CLI 與 Makefile 參考](docs/command-reference.md)
+- [輸出格式](docs/output-formats.md)
+- [Rust library 使用說明](docs/rust-library.md)
+- [npm 跨平台封裝](docs/npm-distribution.md)
+- [CI/CD](docs/ci-cd.md)
+- [初版與後續發布](docs/releasing.md)
+- [安全與操作](docs/security-and-operations.md)
+- [疑難排解](docs/troubleshooting.md)
+- [實作架構](docs/api-and-implementation.md)
+- [官方參考資料](docs/references.md)
 
 * * *
 
-## 官方參考資料
+## 授權
 
-- [Audit Log Query REST API](https://learn.microsoft.com/en-us/rest/api/azure/devops/audit/audit-log/query?view=azure-devops-rest-7.1)
-- [存取、匯出與篩選 Azure DevOps 稽核記錄](https://learn.microsoft.com/en-us/azure/devops/organizations/audit/azure-devops-auditing?view=azure-devops)
-- [Azure DevOps 稽核事件清單](https://learn.microsoft.com/en-us/azure/devops/organizations/audit/auditing-events?view=azure-devops)
-- [Azure DevOps 驗證方式指引](https://learn.microsoft.com/en-us/azure/devops/integrate/get-started/authentication/authentication-guidance?view=azure-devops)
-- [使用 Azure CLI 發行 Microsoft Entra 權杖](https://learn.microsoft.com/en-us/azure/devops/cli/entra-tokens?view=azure-devops)
-- [使用 Azure DevOps PAT](https://learn.microsoft.com/en-us/azure/devops/organizations/accounts/use-personal-access-tokens-to-authenticate?view=azure-devops)
-- [使用 `AZURE_DEVOPS_EXT_PAT`](https://learn.microsoft.com/en-us/azure/devops/cli/log-in-via-pat?view=azure-devops)
-- [建立 Azure DevOps Audit Streaming](https://learn.microsoft.com/en-us/azure/devops/organizations/audit/auditing-streaming?view=azure-devops)
-
-完整清單與用途：[參考資料](docs/references.md)。
+本專案採用 [MIT License](LICENSE)。

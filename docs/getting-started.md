@@ -1,136 +1,118 @@
 # 快速開始
 
-本頁從環境準備開始，說明如何完成第一次稽核記錄匯出。
+本頁從安裝、設定憑證到匯出第一份 Azure DevOps 稽核記錄。
 
 * * *
 
-## 系統需求
+## 一、確認 Azure DevOps 條件
 
-必要項目：
+使用前確認：
 
-- Python 3.9 以上。
-- `make`，僅使用 Python 腳本時可省略。
-- 可連線至 `https://auditservice.dev.azure.com`。
-- `miniasp` 組織或指定組織的 Azure DevOps 身分。
-- `View audit log` 組織層級權限。
-- 下列其中一種驗證資料：
-  - Microsoft Entra 存取權杖。
-  - 具有 `Read Audit Log` 範圍的 Azure DevOps PAT。
+- 組織是 Azure DevOps Services，不是內部部署 Azure DevOps Server
+- 組織已連接 Microsoft Entra ID
+- Organization settings 的 Auditing 已啟用
+- 呼叫身分具有 `View audit log` 權限
+- PAT 具有 `vso.auditlog` scope
 
-選用項目：
-
-- Azure CLI，用於 `make export-entra`。
-- Azure DevOps CLI extension；本工具本身不需要它，但 `AZURE_DEVOPS_EXT_PAT` 是 Azure DevOps CLI 採用的標準環境變數。
-
-檢查本機工具：
-
-```sh
-python3 --version
-make --version
-```
-
-**工具只使用 Python 標準函式庫，不需要安裝第三方 Python 套件。**
+Azure DevOps 官方文件指出稽核資料保留 90 天。超出保留期限的資料無法由本工具復原。
 
 * * *
 
-## 取得程式碼後的第一次檢查
+## 二、安裝
 
-在專案根目錄執行：
+### 從 npm 安裝
 
-```sh
-make check
-```
-
-這個目標會：
-
-1. 編譯檢查 `export_ado_audit_logs.py` 與測試檔。
-2. 執行所有不需連線至 Azure DevOps 的單元測試。
-
-查看可用目標：
+初版發布後：
 
 ```sh
-make help
+npm install --global ado-audit-log-exporter
 ```
+
+確認執行檔：
+
+```sh
+ado-audit-log-exporter --version
+```
+
+### 從 Cargo 安裝
+
+初版發布至 crates.io 後：
+
+```sh
+cargo install ado-audit-log-exporter --locked
+```
+
+從 GitHub 原始碼安裝：
+
+```sh
+git clone https://github.com/doggy8088/ado-audit-log-exporter.git
+cd ado-audit-log-exporter
+cargo install --path . --locked
+```
+
+### 直接建置
+
+```sh
+cargo build --release --locked
+```
+
+執行檔位於：
+
+- macOS 與 Linux：`target/release/ado-audit-log-exporter`
+- Windows：`target/release/ado-audit-log-exporter.exe`
 
 * * *
 
-## 方法一：使用 PAT
+## 三、設定 PAT
 
-在 Azure DevOps 建立僅限目標組織、期限短且只包含 `Read Audit Log` 的 PAT。Microsoft 官方建議 PAT 僅用於個人腳本或臨時工作；可使用 Microsoft Entra 時，應優先採用短效存取權杖。
+**預設使用 `AZURE_DEVOPS_EXT_PAT`。**
 
-將 PAT 放入目前 shell 的環境變數：
-
-```sh
-export AZURE_DEVOPS_EXT_PAT='replace-with-your-pat'
-```
-
-匯出預設組織最近 90 天的 JSON Lines：
+macOS 或 Linux：
 
 ```sh
-make export
+export AZURE_DEVOPS_EXT_PAT='你的 PAT'
 ```
 
-預設輸出檔為：
+PowerShell：
 
-```text
-ado-audit.jsonl
+```powershell
+$env:AZURE_DEVOPS_EXT_PAT = '你的 PAT'
 ```
 
-完成工作後，可從目前 shell 移除 PAT：
-
-```sh
-unset AZURE_DEVOPS_EXT_PAT
-```
-
-PAT 使用方式與安全規範請參閱：
-
-- [驗證與權限](authentication.md)
-- [Microsoft：使用個人存取權杖](https://learn.microsoft.com/en-us/azure/devops/organizations/accounts/use-personal-access-tokens-to-authenticate?view=azure-devops)
+不要把 PAT 放在指令參數或可提交檔案中。
 
 * * *
 
-## 方法二：使用 Microsoft Entra 存取權杖
+## 四、匯出
 
-先登入 Azure CLI：
-
-```sh
-az login
-```
-
-若登入帳號可存取多個租用戶或訂閱，先切換到與 Azure DevOps 組織連線的 Microsoft Entra 租用戶與適當訂閱。
-
-直接由 Makefile 取得短效權杖並匯出：
+CSV：
 
 ```sh
-make export-entra
+ado-audit-log-exporter \
+  --organization miniasp \
+  --start-time 2026-06-01T00:00:00Z \
+  --end-time 2026-07-01T00:00:00Z \
+  --format csv \
+  --output miniasp-ado-audit-june.csv
 ```
 
-此流程會：
-
-1. 使用 Azure DevOps 資源識別碼 `499b84ac-1321-427f-aa17-267ca6975798` 取得存取權杖。
-2. 清除該子程序中的 PAT 環境變數。
-3. 只在遞迴執行的 `make export` 程序中設定 `ADO_ACCESS_TOKEN`。
-4. 不將權杖寫入專案檔案。
-
-也可手動取得權杖：
+JSON Lines：
 
 ```sh
-export ADO_ACCESS_TOKEN="$(
-  az account get-access-token \
-    --resource 499b84ac-1321-427f-aa17-267ca6975798 \
-    --query accessToken \
-    --output tsv
-)"
-make export
+ado-audit-log-exporter \
+  --organization miniasp \
+  --format jsonl \
+  --output miniasp-ado-audit.jsonl
 ```
 
-Microsoft Entra 操作請參閱 [Microsoft：使用 Azure CLI 發行 Entra 權杖](https://learn.microsoft.com/en-us/azure/devops/cli/entra-tokens?view=azure-devops)。
+沒有提供時間時，預設查詢最近 30 天。時間必須使用含時區的 RFC 3339，例如：
+
+- `2026-07-01T00:00:00Z`
+- `2026-07-01T08:00:00+08:00`
 
 * * *
 
-## 指定月份
-
-以下命令匯出 2026 年 6 月的 CSV：
+## 五、使用 Makefile
 
 ```sh
 make export-csv \
@@ -139,87 +121,34 @@ make export-csv \
   OUTPUT=miniasp-ado-audit-june.csv
 ```
 
-時間必須符合 RFC 3339，並包含 `Z` 或明確 UTC offset。工具會將時間正規化為 UTC 後送至 Azure DevOps。
-
-若目標檔已存在，工具預設停止。確定要替換時：
+Makefile 預設 `ORGANIZATION=miniasp`，可覆寫：
 
 ```sh
-make export-csv \
-  START_TIME=2026-06-01T00:00:00Z \
-  END_TIME=2026-07-01T00:00:00Z \
-  OUTPUT=miniasp-ado-audit-june.csv \
-  OVERWRITE=1
+make export-jsonl \
+  ORGANIZATION=another-org \
+  OUTPUT=another-org-audit.jsonl
 ```
 
 * * *
 
-## 指定其他組織
+## 六、確認結果
 
-使用 Makefile：
-
-```sh
-make export ORGANIZATION=contoso OUTPUT=contoso-ado-audit.jsonl
-```
-
-直接執行 Python：
+計算 JSON Lines 筆數：
 
 ```sh
-python3 export_ado_audit_logs.py \
-  --organization contoso \
-  --format jsonl \
-  --output contoso-ado-audit.jsonl
+wc -l miniasp-ado-audit.jsonl
 ```
 
-組織名稱會進行 URL 編碼，再放入下列端點：
-
-```text
-https://auditservice.dev.azure.com/{organization}/_apis/audit/auditlog
-```
-
-* * *
-
-## 選擇輸出格式
-
-| 需求 | 建議格式 | 命令 |
-|---|---|---|
-| 大量記錄、串流分析、逐行處理 | JSON Lines | `make export-jsonl` |
-| 交換完整 JSON 陣列 | JSON | `make export-json` |
-| Excel、試算表、表格篩選 | CSV | `make export-csv` |
-
-完整結構與欄位請參閱 [輸出格式](output-formats.md)。
-
-* * *
-
-## 驗證輸出
-
-檢查檔案是否存在：
+檢查 JSON Lines 前三筆：
 
 ```sh
-ls -lh ado-audit.jsonl
+head -n 3 miniasp-ado-audit.jsonl | jq .
 ```
 
-使用 Python 計算 JSON Lines 筆數，不會將內容輸出到終端：
+檢查 CSV 標頭：
 
 ```sh
-python3 -c 'print(sum(1 for _ in open("ado-audit.jsonl", encoding="utf-8")))'
+head -n 1 miniasp-ado-audit-june.csv
 ```
 
-驗證 CSV 可被解析：
-
-```sh
-python3 -c '
-import csv
-with open("ado-audit.csv", encoding="utf-8", newline="") as stream:
-    reader = csv.DictReader(stream)
-    print(sum(1 for _ in reader))
-'
-```
-
-* * *
-
-## 下一步
-
-- 需要完整參數時，閱讀 [命令參考](command-reference.md)。
-- 需要理解欄位時，閱讀 [輸出格式](output-formats.md)。
-- 需要建立排程或長期保存時，閱讀 [安全與維運](security-and-operations.md)。
-- 遇到錯誤時，閱讀 [疑難排解](troubleshooting.md)。
+**匯出檔可能含個人識別資訊與管理操作內容，不應提交至 Git。**
