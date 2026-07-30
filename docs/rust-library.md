@@ -6,7 +6,7 @@ crate 名稱是 `ado-audit-log-exporter`，Rust module 名稱是 `ado_audit_log_
 
 ## 加入相依套件
 
-初版發布至 crates.io 後：
+發布至 crates.io 後：
 
 ```toml
 [dependencies]

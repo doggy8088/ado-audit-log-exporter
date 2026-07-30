@@ -10,7 +10,7 @@
 
 **工具只透過 REST API 讀取稽核記錄，不使用 Chrome，也不會把 PAT 寫入命令列參數、輸出檔或日誌。**
 
-目前原始碼版本為 `0.1.0`。**初版 GitHub Release、npm 套件與 crates.io crate 尚待維護者依發布文件手動發布。**
+目前準備發布版本為 `0.1.1`。**GitHub Release 與 npm 的 `0.1.0` 已公開；crates.io crate 尚未發布。**
 
 * * *
 
@@ -43,7 +43,7 @@ Microsoft 文件指出 Azure DevOps 稽核記錄保留 90 天，而且 Auditing 
 
 ### npm
 
-初版發布完成後可執行：
+已可從 npm 安裝：
 
 ```sh
 npm install --global ado-audit-log-exporter
@@ -57,7 +57,7 @@ ado-audit-log-exporter --version
 
 ### Cargo
 
-初版發布至 crates.io 後可執行：
+發布至 crates.io 後可執行：
 
 ```sh
 cargo install ado-audit-log-exporter --locked
@@ -236,7 +236,7 @@ GitHub Actions 包含三個工作流程：
 
 **工作流程不使用 `NPM_TOKEN` 或 `NODE_AUTH_TOKEN`。** npm 發布透過 GitHub Actions OIDC 取得短效憑證，且 npm 會自動產生 provenance。
 
-由於 npm 必須先有套件頁面才能設定 Trusted Publisher，初版需要維護者先手動發布 npm 套件，再到 npm 設定 Trusted Publisher。完整且依序的操作見 [初版發布手冊](docs/releasing.md)。
+`0.1.0` 已由維護者完成人工 bootstrap。從 `0.1.1` 起，GitHub Release 建立後由 `npm-publish.yml` 透過 trusted publishing 發布。完整流程見 [發布手冊](docs/releasing.md)。
 
 * * *
 
@@ -274,7 +274,7 @@ npm test
 npm pack --dry-run
 ```
 
-在 GitHub Release 尚未建立前，`make release-asset-check` 預期失敗；這項失敗表示 npm 發布防護正在阻止缺少原生執行檔的版本上架。
+在同版本 GitHub Release 尚未建立前，`make release-asset-check` 預期失敗；這項失敗表示 npm 發布防護正在阻止缺少原生執行檔的版本上架。
 
 * * *
 
@@ -288,7 +288,7 @@ npm pack --dry-run
 - [Rust library 使用說明](docs/rust-library.md)
 - [npm 跨平台封裝](docs/npm-distribution.md)
 - [CI/CD](docs/ci-cd.md)
-- [初版與後續發布](docs/releasing.md)
+- [發布流程](docs/releasing.md)
 - [安全與操作](docs/security-and-operations.md)
 - [疑難排解](docs/troubleshooting.md)
 - [實作架構](docs/api-and-implementation.md)

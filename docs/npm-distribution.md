@@ -98,13 +98,13 @@ npm CLI 會偵測 GitHub Actions 的 OIDC 環境，交換短效發布憑證。�
 NPM_TRUSTED_PUBLISHING_ENABLED=true
 ```
 
-初版人工 npm 發布前不要設定此變數，否則 GitHub Release 建立後會嘗試執行尚未完成 npm 端綁定的 trusted publish。
+`0.1.0` 已完成人工 bootstrap。從 `0.1.1` 起，在 npm 端綁定 Trusted Publisher 後，必須將此變數設為 `true`，GitHub Release 建立時才會觸發 OIDC 發布。
 
 * * *
 
 ## npm 端綁定值
 
-初版套件存在後，在 npm package Settings 的 Trusted publishing 設定：
+在 npm package Settings 的 Trusted publishing 設定：
 
 | 欄位 | 值 |
 |---|---|
@@ -133,4 +133,4 @@ npm pack --dry-run
 cargo build --release --locked
 ```
 
-接著執行一般 `npm install` 時，postinstall 會複製 `target/release` 中的本機執行檔，不會下載尚未發布的 Release。
+接著執行一般 `npm install` 時，postinstall 會複製 `target/release` 中的本機執行檔，不會下載 GitHub Release。

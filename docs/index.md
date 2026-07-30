@@ -21,13 +21,13 @@
 2. [REST API 與實作架構](api-and-implementation.md)
 3. [npm 跨平台封裝](npm-distribution.md)
 4. [CI/CD](ci-cd.md)
-5. [初版與後續發布](releasing.md)
+5. [發布流程](releasing.md)
 6. [官方參考資料](references.md)
 
 * * *
 
 ## 目前發布狀態
 
-**原始碼版本為 `0.1.0`，但初版 GitHub Release、npm 套件與 crates.io crate 尚未發布。**
+**目前準備發布版本為 `0.1.1`；GitHub Release 與 npm 的 `0.1.0` 已公開，crates.io crate 尚未發布。**
 
-維護者應依 [初版發布手冊](releasing.md) 完成人工發布。npm trusted publishing 已在 GitHub Actions 中設定，但必須先建立 npm 套件頁面並完成 npm 端的 Trusted Publisher 綁定後，才能啟用。
+`0.1.1` 使用 GitHub Actions 建立跨平台 Release，並透過 npm trusted publishing 發布。操作與驗證方式見 [發布手冊](releasing.md)。

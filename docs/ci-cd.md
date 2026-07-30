@@ -93,6 +93,6 @@ OIDC 的 `id-token: write` 只授權 workflow 請求短效 ID token，不會把 
 
 ## crates.io
 
-初版依需求由維護者人工執行 `cargo publish`。目前沒有把 crates.io token 放入 GitHub Actions，也沒有自動發布 crate。
+crates.io 由維護者人工執行 `cargo publish`。目前沒有把 crates.io token 放入 GitHub Actions，也沒有自動發布 crate。
 
 若日後要自動化 crates.io，應另外評估 crates.io trusted publishing 的當期支援狀態；**不得直接把長效 crates.io token 寫入 workflow YAML。**

@@ -22,7 +22,7 @@ Azure DevOps 官方文件指出稽核資料保留 90 天。超出保留期限的
 
 ### 從 npm 安裝
 
-初版發布後：
+從 npm 安裝：
 
 ```sh
 npm install --global ado-audit-log-exporter
@@ -36,7 +36,7 @@ ado-audit-log-exporter --version
 
 ### 從 Cargo 安裝
 
-初版發布至 crates.io 後：
+發布至 crates.io 後：
 
 ```sh
 cargo install ado-audit-log-exporter --locked

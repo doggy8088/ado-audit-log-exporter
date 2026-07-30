@@ -1,6 +1,6 @@
 {
   "name": "ado-audit-log-exporter",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "跨平台 Azure DevOps 稽核記錄匯出工具，提供 Rust library 與原生 CLI。",
   "bin": {
     "ado-audit-log-exporter": "npm/cli.cjs"

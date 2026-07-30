@@ -1,23 +1,22 @@
-# 初版與後續發布
+# 發布流程
 
-**本文件的初版流程由維護者親自執行；自動化只負責 tag 後的跨平台建置與 GitHub Release。**
+`0.1.0` 已完成 GitHub Release 與 npm 人工 bootstrap。目前準備發布的 patch 版本是 `0.1.1`。
 
-目前預定初版為 `0.1.0`。
+**GitHub Release 與 npm 都由 GitHub Actions 處理；crates.io 仍保留人工發布。**
 
 * * *
 
-## 一、發布前確認
+## 一、發布前狀態
 
-在 `main` 最新提交執行：
+確認工作目錄、版本與遠端分支：
 
 ```sh
 git status --short --branch
-make check
-cargo package --list
-npm pack --dry-run
+git fetch --tags origin
+test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
 ```
 
-確認版本完全一致：
+確認 Cargo 與 npm 版本一致：
 
 ```sh
 node -p "require('./package.json').version"
@@ -25,101 +24,47 @@ cargo metadata --no-deps --format-version 1 |
   jq -r '.packages[0].version'
 ```
 
-兩者都必須是：
+本次兩者都必須是：
 
 ```text
-0.1.0
+0.1.1
 ```
 
-再次確認 npm 名稱仍可使用：
-
-```sh
-npm view ado-audit-log-exporter name
-```
-
-`E404` 表示當下尚不存在；名稱可用性可能隨時改變，實際以發布當下 npm 回應為準。
-
-* * *
-
-## 二、建立初版 GitHub Release
-
-建立 annotated tag：
-
-```sh
-git tag -a v0.1.0 -m "Release v0.1.0"
-git push origin v0.1.0
-```
-
-GitHub Actions 的 Release workflow 會：
-
-1. 核對三處版本
-2. 建置五個平台
-3. 建立五個壓縮檔
-4. 建立五個 SHA-256 檔
-5. 建立公開 GitHub Release
-
-查看進度：
-
-```sh
-gh run list --workflow release.yml --limit 5
-gh run watch
-```
-
-確認 Release：
-
-```sh
-gh release view v0.1.0
-node npm/prepublish-check.cjs
-```
-
-**十個 Release 資產全部可讀取後，才能發布 npm。**
-
-* * *
-
-## 三、人工發布初版 npm 套件
-
-npm 必須先存在 package 頁面，才能在網頁設定 Trusted Publisher。因此初版使用維護者帳號人工發布：
-
-```sh
-npm login
-npm whoami
-npm publish --access public
-```
-
-`prepublishOnly` 會自動執行：
-
-- npm 測試
-- npm tarball dry run
-- 十個 GitHub Release 資產檢查
-
-若 npm 帳號要求雙因素驗證，依 npm 提示輸入 OTP。**不要建立或提交 `NPM_TOKEN`。**
-
-發布後確認：
+確認 npm 尚未存在同版本：
 
 ```sh
 npm view ado-audit-log-exporter version
 ```
 
-應回傳：
-
-```text
-0.1.0
-```
+發布 `0.1.1` 前應顯示 `0.1.0`。
 
 * * *
 
-## 四、設定 npm Trusted Publisher
+## 二、完整品質檢查
 
-開啟 npmjs.com：
-
-```text
-Packages
-→ ado-audit-log-exporter
-→ Settings
-→ Trusted publishing
+```sh
+make check
+cargo package --list
+cargo publish --dry-run --locked
+npm pack --dry-run
 ```
 
-填入：
+檢查重點：
+
+- Rust fmt、Clippy、測試與文件測試通過
+- Rust 1.85 最低版本測試通過
+- npm 測試通過
+- Cargo crate 只包含 allowlist 檔案
+- npm tarball 只包含 JavaScript 薄包裝、README 與 LICENSE
+- 不含稽核輸出、PAT、`.env`、Cargo target 或本機快取
+
+`npm/prepublish-check.cjs` 在 `v0.1.1` Release 尚未建立前預期失敗，因為十個公開資產還不存在。
+
+* * *
+
+## 三、啟用 npm Trusted Publisher
+
+npm package Settings 的 Trusted publishing 必須設定：
 
 | 欄位 | 值 |
 |---|---|
@@ -130,7 +75,9 @@ Packages
 | Environment name | 留空 |
 | Allowed actions | `npm publish` |
 
-儲存後，在本機啟用 repository variable：
+Workflow filename 只能填檔名，不可填完整路徑。
+
+GitHub repository variable 必須啟用：
 
 ```sh
 gh variable set NPM_TRUSTED_PUBLISHING_ENABLED \
@@ -144,31 +91,119 @@ gh variable set NPM_TRUSTED_PUBLISHING_ENABLED \
 gh variable list --repo doggy8088/ado-audit-log-exporter
 ```
 
-接著在 npm package Settings 的 Publishing access 選擇：
+在 npm Publishing access 應選擇：
 
 ```text
 Require two-factor authentication and disallow tokens
 ```
 
-npm 官方文件指出這項設定不會阻擋 Trusted Publisher，因為 OIDC 不使用傳統 token。
-
-**初版已人工發布為 `0.1.0`，不可用 workflow 重複發布同版本來測試。Trusted Publisher 的首次實際驗證會發生在下一個新版本。**
+**GitHub Actions 不使用 `NPM_TOKEN` 或 `NODE_AUTH_TOKEN`。** `npm-publish.yml` 透過 `id-token: write` 取得 OIDC 短效憑證。
 
 * * *
 
-## 五、人工發布 Rust crate
+## 四、提交版本變更
 
-確認 crate 內容：
+版本與文件變更應使用 Conventional Commits，並以 UTF-8 暫存檔提交：
 
 ```sh
-cargo package --list
-cargo publish --dry-run --locked
+commit_msg_file="$(mktemp -t codex-commit-message)"
+git commit -F "$commit_msg_file"
 ```
 
-登入並發布：
+提交後推送並等待 CI：
+
+```sh
+git push origin main
+gh run list --workflow ci.yml --limit 5
+gh run watch
+```
+
+只有 `main` CI 全部成功後才能建立 tag。
+
+* * *
+
+## 五、建立 patch tag
+
+```sh
+git tag -a v0.1.1 -m "Release v0.1.1"
+git push origin v0.1.1
+```
+
+Release workflow 會：
+
+1. 核對 tag、Cargo 與 npm 版本皆為 `0.1.1`
+2. 在五個 GitHub-hosted runner 建置原生執行檔
+3. 建立五個壓縮檔
+4. 建立五個 LF 換行的 SHA-256 檔
+5. 建立公開 GitHub Release
+
+查看進度：
+
+```sh
+gh run list --workflow release.yml --limit 5
+gh run watch
+```
+
+* * *
+
+## 六、驗證 GitHub Release
+
+```sh
+gh release view v0.1.1
+node npm/prepublish-check.cjs
+```
+
+必須存在十個資產：
+
+- macOS ARM64 壓縮檔與 checksum
+- macOS x64 壓縮檔與 checksum
+- Linux ARM64 壓縮檔與 checksum
+- Linux x64 壓縮檔與 checksum
+- Windows x64 壓縮檔與 checksum
+
+**npm 發布必須等十個公開 URL 全部可讀取。**
+
+* * *
+
+## 七、驗證 npm Trusted Publishing
+
+GitHub Release published 事件會觸發 `npm-publish.yml`：
+
+```sh
+gh run list --workflow npm-publish.yml --limit 5
+gh run watch
+```
+
+成功後確認：
+
+```sh
+npm view ado-audit-log-exporter version
+```
+
+應回傳：
+
+```text
+0.1.1
+```
+
+安裝驗證：
+
+```sh
+npm install --global ado-audit-log-exporter@0.1.1
+ado-audit-log-exporter --version
+```
+
+trusted publishing 會自動產生 npm provenance，不需要在 workflow 使用 `--provenance`。
+
+* * *
+
+## 八、人工發布 Rust crate
+
+crates.io 目前沒有自動發布 workflow。如需發布 `0.1.1`：
 
 ```sh
 cargo login
+cargo publish --dry-run --locked
 cargo publish --locked
 ```
 
@@ -178,52 +213,27 @@ cargo publish --locked
 cargo search ado-audit-log-exporter --limit 1
 ```
 
-crates.io 與 npm 是不同 registry，版本發布互不替代。
+crates.io 與 npm 是不同 registry，GitHub Release 或 npm 發布不會自動建立 crate。
 
 * * *
 
-## 六、測試初版安裝
+## 後續版本
 
-建立空白暫存目錄後測試 npm：
+後續版本必須同步更新：
 
-```sh
-npm install --global ado-audit-log-exporter@0.1.0
-ado-audit-log-exporter --version
+1. `Cargo.toml`
+2. `Cargo.lock`
+3. `package.json`
+4. `package-lock.json`
+5. README 與發布狀態文件
+
+版本對應必須固定為：
+
+```text
+Cargo version = npm version = Git tag = GitHub Release
 ```
 
-測試 Cargo：
-
-```sh
-cargo install ado-audit-log-exporter@0.1.0 --locked
-ado-audit-log-exporter --version
-```
-
-用測試組織與最小時間範圍執行實際匯出，不要把輸出檔提交到儲存庫。
-
-* * *
-
-## 七、後續版本
-
-後續版本流程：
-
-1. 更新 `Cargo.toml` 的 `version`
-2. 更新 `package.json` 與 `package-lock.json` 的 `version`
-3. 更新 CHANGELOG 或 Release 說明
-4. 執行 `make check`
-5. 提交並合併至 `main`
-6. 建立並 push 相同版本的 `vX.Y.Z` tag
-7. Release workflow 建立原生資產
-8. GitHub Release published 觸發 npm trusted publishing
-9. 視需要人工執行 `cargo publish --locked`
-
-例如 `0.2.0`：
-
-```sh
-git tag -a v0.2.0 -m "Release v0.2.0"
-git push origin v0.2.0
-```
-
-若 npm workflow 未執行，先檢查 repository variable 與 npm Trusted Publisher 的大小寫、儲存庫名稱及 workflow filename。
+不要移動已公開的 tag，也不要覆寫已發布至 npm 或 crates.io 的版本。
 
 * * *
 
@@ -231,14 +241,14 @@ git push origin v0.2.0
 
 ### Release workflow 失敗
 
-不要移動同一 tag 指向其他提交。修正程式與版本後建立新的 patch 版本，例如 `v0.1.1`。
+若尚未建立 Release，可修正 workflow 後以 `workflow_dispatch` 指定既有 tag 重跑。若二進位內容或原始碼需要變更，應建立新的 patch 版本，不可移動已公開 tag。
 
 ### GitHub Release 完成但 npm 發布失敗
 
-若版本尚未出現在 npm，可修正 trusted publishing 設定後，在 Actions 手動執行 `npm-publish.yml` 並選擇同一 tag。
+若 npm 尚未存在該版本，修正 Trusted Publisher、repository variable 或 workflow 後，手動執行 `npm-publish.yml` 並指定同一 Release tag。
 
 若 npm 已存在該版本，不可重複發布；必須增加版本。
 
 ### crates.io 發布失敗
 
-若版本尚未上架，可修正 crate metadata 後重試。若已上架，crates.io 不允許覆寫；必須增加版本。
+若版本尚未上架，可修正 metadata 後重試。若已上架，crates.io 不允許覆寫；必須增加版本。
