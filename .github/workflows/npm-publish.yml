@@ -29,13 +29,24 @@ jobs:
           package-manager-cache: false
       - name: Update npm to latest
         run: npm install -g npm@latest
-      - name: Align npm version with release tag
+      - name: Verify release tag and package versions
         env:
           RELEASE_TAG: ${{ github.event.release.tag_name || github.event.inputs.tag }}
         run: |
-          VERSION="$RELEASE_TAG"
-          VERSION="${VERSION#v}"
-          npm version "$VERSION" --no-git-tag-version --allow-same-version
+          VERSION="${RELEASE_TAG#v}"
+          PACKAGE_VERSION="$(node -p "require('./package.json').version")"
+          LOCK_VERSION="$(node -p "require('./package-lock.json').packages[''].version")"
+          CARGO_VERSION="$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].version')"
+          if [[ -z "$VERSION" || "$RELEASE_TAG" != "v$VERSION" ]]; then
+            echo "::error::Release tag must use the v<version> format"
+            exit 1
+          fi
+          if [[ "$PACKAGE_VERSION" != "$VERSION" ||
+                "$LOCK_VERSION" != "$VERSION" ||
+                "$CARGO_VERSION" != "$VERSION" ]]; then
+            echo "::error::Version mismatch: tag=$VERSION package=$PACKAGE_VERSION lock=$LOCK_VERSION cargo=$CARGO_VERSION"
+            exit 1
+          fi
       - run: npm ci --ignore-scripts
       - run: npm test
       - name: Publish

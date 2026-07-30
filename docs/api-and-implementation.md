@@ -111,7 +111,7 @@ JSON／JSON Lines／CSV writer
 - 使用 `reqwest` 非同步 client
 - 預設逾時 30 秒
 - 預設重試四次
-- 重試連線錯誤、timeout、`429` 與 `5xx`
+- 重試連線錯誤、timeout、成功狀態回應的本文傳輸錯誤、`429` 與 `5xx`
 - 遵守整數秒數 `Retry-After`
 - 其他情況採上限 30 秒的指數退避
 - 最多保留伺服器錯誤訊息前 1,000 個字元
@@ -128,10 +128,13 @@ JSON／JSON Lines／CSV writer
 - array `value` 回應
 - 未知欄位保留
 - continuation token 分頁
+- 成功狀態回應本文中斷後重試
 - Authorization header 產生
 - JSON Lines 未知欄位輸出
 - CSV 複合值跳脫
+- CSV 公式前綴中和且 JSON 保留原值
 - npm 平台對應
+- npm musl 拒絕
 - SHA-256 檢查
 - Release 資產完整性檢查
 

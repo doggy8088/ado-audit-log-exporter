@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 已存在的版本標籤，例如 v0.1.1
+        description: 已存在的版本標籤，例如 v0.1.2
         required: true
         type: string
 
@@ -31,10 +31,18 @@ jobs:
         run: |
           VERSION="${RELEASE_TAG#v}"
           PACKAGE_VERSION="$(node -p "require('./package.json').version")"
+          LOCK_VERSION="$(node -p "require('./package-lock.json').packages[''].version")"
           CARGO_VERSION="$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].version')"
-          test "$RELEASE_TAG" = "v$VERSION"
-          test "$PACKAGE_VERSION" = "$VERSION"
-          test "$CARGO_VERSION" = "$VERSION"
+          if [[ -z "$VERSION" || "$RELEASE_TAG" != "v$VERSION" ]]; then
+            echo "::error::Release tag must use the v<version> format"
+            exit 1
+          fi
+          if [[ "$PACKAGE_VERSION" != "$VERSION" ||
+                "$LOCK_VERSION" != "$VERSION" ||
+                "$CARGO_VERSION" != "$VERSION" ]]; then
+            echo "::error::Version mismatch: tag=$VERSION package=$PACKAGE_VERSION lock=$LOCK_VERSION cargo=$CARGO_VERSION"
+            exit 1
+          fi
 
   build:
     needs: verify-version
@@ -47,12 +55,6 @@ jobs:
             ext: tar.xz
           - target: x86_64-apple-darwin
             os: macos-15-intel
-            ext: tar.xz
-          - target: x86_64-unknown-linux-gnu
-            os: ubuntu-24.04
-            ext: tar.xz
-          - target: aarch64-unknown-linux-gnu
-            os: ubuntu-24.04-arm
             ext: tar.xz
           - target: x86_64-pc-windows-msvc
             os: windows-2025
@@ -100,8 +102,70 @@ jobs:
           name: ado-audit-log-exporter-${{ matrix.target }}
           path: dist/*
 
+  build-linux:
+    needs: verify-version
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-24.04
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-24.04-arm
+    runs-on: ${{ matrix.os }}
+    container:
+      image: rust:1.85-bullseye
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+      - name: Install packaging and binary inspection tools
+        run: |
+          apt-get update
+          apt-get install --yes --no-install-recommends binutils xz-utils
+          rm -rf /var/lib/apt/lists/*
+      - name: Configure Rust target
+        run: rustup target add "${{ matrix.target }}"
+      - run: cargo build --release --locked --target "${{ matrix.target }}"
+      - name: Verify glibc 2.31 compatibility ceiling
+        run: |
+          BINARY="target/${{ matrix.target }}/release/ado-audit-log-exporter"
+          MAX_GLIBC="$(
+            objdump -T "$BINARY" |
+              sed -n 's/.*GLIBC_\([0-9][0-9.]*\).*/\1/p' |
+              sort -Vu |
+              tail -n 1
+          )"
+          if [[ -z "$MAX_GLIBC" ]]; then
+            echo "::error::Unable to determine the binary's glibc requirement"
+            exit 1
+          fi
+          if ! dpkg --compare-versions "$MAX_GLIBC" le "2.31"; then
+            echo "::error::Binary requires GLIBC_$MAX_GLIBC; maximum allowed is GLIBC_2.31"
+            exit 1
+          fi
+      - name: Package binary
+        run: |
+          BINARY="target/${{ matrix.target }}/release/ado-audit-log-exporter"
+          if [[ ! -f "$BINARY" ]]; then
+            echo "::error::Missing built binary: $BINARY"
+            exit 1
+          fi
+          mkdir -p dist
+          ARCHIVE="dist/ado-audit-log-exporter-${{ matrix.target }}.tar.xz"
+          tar -cJf "$ARCHIVE" -C "$(dirname "$BINARY")" "$(basename "$BINARY")"
+          HASH="$(sha256sum "$ARCHIVE" | cut -d ' ' -f 1)"
+          printf '%s  %s\n' "$HASH" "$(basename "$ARCHIVE")" > "$ARCHIVE.sha256"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ado-audit-log-exporter-${{ matrix.target }}
+          path: dist/*
+
   publish-release:
-    needs: build
+    needs: [build, build-linux]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/download-artifact@v4
@@ -115,7 +179,45 @@ jobs:
           TAG: ${{ github.event.inputs.tag || github.ref_name }}
         run: |
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" artifacts/* --clobber
+            mapfile -t existing_assets < <(
+              gh release view "$TAG" --json assets --jq '.assets[].name'
+            )
+            missing_assets=()
+            invalid_pairs=0
+
+            asset_exists() {
+              local expected="$1"
+              local existing
+              for existing in "${existing_assets[@]}"; do
+                if [[ "$existing" == "$expected" ]]; then
+                  return 0
+                fi
+              done
+              return 1
+            }
+
+            for archive in artifacts/*.tar.xz artifacts/*.zip; do
+              [[ -e "$archive" ]] || continue
+              archive_name="${archive##*/}"
+              checksum="$archive.sha256"
+              checksum_name="${checksum##*/}"
+
+              if asset_exists "$archive_name" && asset_exists "$checksum_name"; then
+                echo "Preserving immutable release assets: $archive_name and $checksum_name"
+              elif ! asset_exists "$archive_name" && ! asset_exists "$checksum_name"; then
+                missing_assets+=("$archive" "$checksum")
+              else
+                echo "::error::Release contains only one member of asset pair: $archive_name / $checksum_name"
+                invalid_pairs=1
+              fi
+            done
+
+            if (( invalid_pairs != 0 )); then
+              exit 1
+            fi
+            if (( ${#missing_assets[@]} != 0 )); then
+              gh release upload "$TAG" "${missing_assets[@]}"
+            fi
           else
             gh release create "$TAG" artifacts/* --verify-tag --generate-notes
           fi

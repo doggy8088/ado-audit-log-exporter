@@ -21,6 +21,7 @@ const PACKAGE_ROOT = join(__dirname, '..');
 const BINARY_NAME = "ado-audit-log-exporter";
 const GITHUB_OWNER = "doggy8088";
 const GITHUB_REPO = "ado-audit-log-exporter";
+const MIN_GLIBC_VERSION = '2.31';
 const BIN_DIR = join(__dirname, `${BINARY_NAME}-bin`);
 const BIN_NAME = process.platform === 'win32' ? `${BINARY_NAME}.exe` : BINARY_NAME;
 const DEST = join(BIN_DIR, BIN_NAME);
@@ -37,7 +38,69 @@ function platformKey(platform = process.platform, arch = process.arch) {
   return `${platform}-${arch}`;
 }
 
-function cargoTarget(platform = process.platform, arch = process.arch) {
+function currentProcessReport() {
+  try {
+    return process.report?.getReport?.();
+  } catch {
+    return undefined;
+  }
+}
+
+function detectLinuxLibc(report = currentProcessReport()) {
+  if (report?.header?.glibcVersionRuntime) return 'glibc';
+  if (
+    report?.sharedObjects?.some(
+      (path) => path.includes('ld-musl-') || path.includes('libc.musl-'),
+    )
+  ) {
+    return 'musl';
+  }
+  return 'unknown';
+}
+
+function detectGlibcVersion(report = currentProcessReport()) {
+  return report?.header?.glibcVersionRuntime;
+}
+
+function glibcVersionAtLeast(version, minimum = MIN_GLIBC_VERSION) {
+  const parse = (value) => {
+    if (typeof value !== 'string' || !/^\d+(?:\.\d+)+$/.test(value)) return undefined;
+    return value.split('.').map((part) => Number.parseInt(part, 10));
+  };
+  const actual = parse(version);
+  const required = parse(minimum);
+  if (!actual || !required) return false;
+
+  const length = Math.max(actual.length, required.length);
+  for (let index = 0; index < length; index += 1) {
+    const actualPart = actual[index] ?? 0;
+    const requiredPart = required[index] ?? 0;
+    if (actualPart > requiredPart) return true;
+    if (actualPart < requiredPart) return false;
+  }
+  return true;
+}
+
+function cargoTarget(
+  platform = process.platform,
+  arch = process.arch,
+  libc = platform === 'linux' ? detectLinuxLibc() : undefined,
+  glibcVersion = platform === 'linux' && libc === 'glibc'
+    ? detectGlibcVersion()
+    : undefined,
+) {
+  if (platform === 'linux' && libc !== 'glibc') {
+    throw new Error(
+      `Unsupported Linux libc: ${libc}. ` +
+        'The npm package supports GNU libc (glibc) 2.31 or newer; Alpine/musl is not supported.',
+    );
+  }
+  if (platform === 'linux' && !glibcVersionAtLeast(glibcVersion)) {
+    throw new Error(
+      `Unsupported GNU libc version: ${glibcVersion ?? 'unknown'}. ` +
+        `The npm package requires glibc ${MIN_GLIBC_VERSION} or newer.`,
+    );
+  }
   const target = TARGETS[platformKey(platform, arch)];
   if (!target) {
     throw new Error(`Unsupported platform: ${platform}/${arch}`);
@@ -181,9 +244,12 @@ module.exports = {
   TARGETS,
   artifactName,
   cargoTarget,
+  detectGlibcVersion,
+  detectLinuxLibc,
   findExtractedBinary,
   platformKey,
   releaseBaseUrl,
+  glibcVersionAtLeast,
   sha256,
   verifyChecksum,
 };

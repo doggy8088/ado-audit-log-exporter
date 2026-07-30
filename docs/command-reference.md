@@ -48,6 +48,7 @@ ado-audit-log-exporter [OPTIONS]
 
 - TCP 連線失敗
 - HTTP timeout
+- 成功狀態回應的本文傳輸中斷或逾時
 - HTTP `429`
 - HTTP `5xx`
 

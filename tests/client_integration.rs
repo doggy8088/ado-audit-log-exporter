@@ -2,9 +2,10 @@ use std::{
     io::{Read, Write},
     net::TcpListener,
     thread,
+    time::Duration,
 };
 
-use ado_audit_log_exporter::{AuditClient, AuditQuery, Authentication};
+use ado_audit_log_exporter::{AuditClient, AuditQuery, Authentication, RetryPolicy};
 use chrono::{TimeZone, Utc};
 
 #[tokio::test]
@@ -44,6 +45,40 @@ async fn follows_continuation_token_without_exposing_authentication() {
     server.join().expect("mock server");
 }
 
+#[tokio::test]
+async fn retries_when_a_success_response_body_is_truncated() {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind mock server");
+    let address = listener.local_addr().expect("mock server address");
+    let server = thread::spawn(move || serve_truncated_then_complete(listener));
+
+    let authentication =
+        Authentication::personal_access_token("test-pat").expect("valid authentication");
+    let client = AuditClient::from_endpoint(format!("http://{address}/audit"), authentication)
+        .expect("valid client")
+        .with_retry_policy(RetryPolicy {
+            max_retries: 1,
+            max_delay: Duration::ZERO,
+        });
+    let start = Utc
+        .with_ymd_and_hms(2026, 7, 1, 0, 0, 0)
+        .single()
+        .expect("valid time");
+    let end = Utc
+        .with_ymd_and_hms(2026, 7, 2, 0, 0, 0)
+        .single()
+        .expect("valid time");
+    let mut pager = client.pager(AuditQuery::new(start, end).expect("valid query"));
+
+    let page = pager
+        .next_page()
+        .await
+        .expect("body transfer should be retried")
+        .expect("some page");
+
+    assert_eq!(page.entries[0].id.as_deref(), Some("event-after-retry"));
+    server.join().expect("mock server");
+}
+
 fn serve_two_pages(listener: TcpListener) {
     for request_number in 0..2 {
         let (mut stream, _) = listener.accept().expect("accept request");
@@ -69,6 +104,34 @@ fn serve_two_pages(listener: TcpListener) {
         stream
             .write_all(response.as_bytes())
             .expect("write response");
+    }
+}
+
+fn serve_truncated_then_complete(listener: TcpListener) {
+    for request_number in 0..2 {
+        let (mut stream, _) = listener.accept().expect("accept request");
+        let request = read_headers(&mut stream);
+        assert!(request.starts_with("GET /audit?"));
+
+        if request_number == 0 {
+            let partial_body = r#"{"decoratedAuditLogEntries":["#;
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 128\r\nConnection: close\r\n\r\n{partial_body}"
+            );
+            stream
+                .write_all(response.as_bytes())
+                .expect("write truncated response");
+        } else {
+            let body =
+                r#"{"decoratedAuditLogEntries":[{"id":"event-after-retry"}],"hasMore":false}"#;
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            stream
+                .write_all(response.as_bytes())
+                .expect("write complete response");
+        }
     }
 }
 

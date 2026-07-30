@@ -9,7 +9,7 @@ npm 套件是 JavaScript 薄包裝，不編譯 Rust，也不把所有平台執�
 ```text
 npm install
     ↓
-辨識 process.platform 與 process.arch
+辨識 process.platform、process.arch 與 Linux libc
     ↓
 組合同版本 GitHub Release URL
     ↓
@@ -34,15 +34,15 @@ npm 版本與 GitHub Release tag 必須一致。
 
 ## 支援平台對應
 
-| Node platform | Node arch | Rust target |
-|---|---|---|
-| `darwin` | `arm64` | `aarch64-apple-darwin` |
-| `darwin` | `x64` | `x86_64-apple-darwin` |
-| `linux` | `arm64` | `aarch64-unknown-linux-gnu` |
-| `linux` | `x64` | `x86_64-unknown-linux-gnu` |
-| `win32` | `x64` | `x86_64-pc-windows-msvc` |
+| Node platform | Node arch | libc | Rust target |
+|---|---|---|---|
+| `darwin` | `arm64` | 不適用 | `aarch64-apple-darwin` |
+| `darwin` | `x64` | 不適用 | `x86_64-apple-darwin` |
+| `linux` | `arm64` | glibc 2.31 以上 | `aarch64-unknown-linux-gnu` |
+| `linux` | `x64` | glibc 2.31 以上 | `x86_64-unknown-linux-gnu` |
+| `win32` | `x64` | 不適用 | `x86_64-pc-windows-msvc` |
 
-其他組合會明確回報 unsupported platform，不會錯誤下載其他架構。
+postinstall 透過 Node.js diagnostic report 辨識 Linux libc。Alpine 等 musl 環境會在下載前明確失敗；其他不支援的作業系統與架構也不會錯誤下載 GNU 資產。
 
 * * *
 
@@ -75,6 +75,8 @@ node npm/prepublish-check.cjs
 ```
 
 缺少任何一個資產時，`npm publish` 的 `prepublishOnly` 會失敗。這可避免套件已上架，但使用者安裝時找不到原生執行檔。
+
+Release 工作流程不覆寫既有壓縮檔或 checksum。若既有 Release 只包含其中一個，工作流程會失敗；兩者都不存在時才會成對補上。已發布 npm 版本因此固定下載同一份原生內容。
 
 * * *
 

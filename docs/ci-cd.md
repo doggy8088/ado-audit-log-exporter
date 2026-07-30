@@ -46,12 +46,12 @@
 工作流程先確認：
 
 ```text
-tag 版本 = Cargo.toml 版本 = package.json 版本
+tag 版本 = Cargo.toml 版本 = package.json 版本 = package-lock.json 版本
 ```
 
-接著在原生 GitHub-hosted runner 建置五個 target。每個壓縮檔只有一個原生執行檔，並產生同名 `.sha256`。
+接著建置五個 target。macOS 與 Windows 使用原生 GitHub-hosted runner；兩個 GNU/Linux target 在 `rust:1.85-bullseye` 容器建置，以 Debian 11 的 glibc 2.31 為相容上限，並以 `objdump` 驗證產物沒有引用較新的 glibc 符號。每個壓縮檔只有一個原生執行檔，並產生同名 `.sha256`。
 
-最後以 `gh release create --verify-tag --generate-notes` 建立 GitHub Release。若 Release 已存在，會上傳並覆寫同名資產。
+最後以 `gh release create --verify-tag --generate-notes` 建立 GitHub Release。若 Release 已存在，工作流程會保留成對存在的壓縮檔與 checksum，只補上成對缺少的資產，且不使用 `--clobber`。只存在壓縮檔或 checksum 其中一個時會停止，避免以不同建置內容補出不相符的配對。
 
 * * *
 
@@ -77,6 +77,7 @@ Release workflow 以 `GITHUB_TOKEN` 建立 Release 時，GitHub 不會讓該事�
 - npm package 已存在
 - npm Trusted Publisher 已綁定正確儲存庫與 workflow 檔名
 - repository variable `NPM_TRUSTED_PUBLISHING_ENABLED` 等於 `true`
+- Release tag、`package.json`、`package-lock.json` 與 Cargo package 版本完全一致
 - GitHub Release 的十個平台資產 URL 可讀取
 
 **工作流程不設定 npm 長效 token。**

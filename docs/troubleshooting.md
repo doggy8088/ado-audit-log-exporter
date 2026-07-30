@@ -114,10 +114,10 @@ make export OUTPUT=audit.jsonl OVERWRITE=1
 目前只支援：
 
 - macOS ARM64 與 x64
-- Linux ARM64 與 x64
+- GNU/Linux glibc 2.31 以上的 ARM64 與 x64
 - Windows x64
 
-Windows ARM64、Linux ARMv7、FreeBSD 等平台會明確失敗。可改用 Rust toolchain 自行從原始碼建置，但相依套件與目標平台支援仍需另行驗證。
+Alpine 等 musl 系統、Windows ARM64、Linux ARMv7、FreeBSD，以及 glibc 低於 2.31 的系統均不在 npm 原生資產支援範圍。musl 會在 postinstall 下載前明確失敗。可改用 Rust toolchain 自行從原始碼建置，但相依套件與目標平台支援仍需另行驗證。
 
 * * *
 
@@ -146,7 +146,7 @@ gh release view "v$(node -p "require('./package.json').version")"
 可能原因：
 
 - 下載損毀
-- Release 資產更新但 checksum 未同步
+- Release 資產與 checksum 並非同一建置配對
 - proxy 或快取回傳錯誤內容
 - GitHub Release 遭未授權修改
 

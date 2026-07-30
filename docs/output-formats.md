@@ -85,6 +85,8 @@ ado-audit-log-exporter --format csv --output audit.csv
 
 `details`、`data` 或未知複合欄位若是 object 或 array，會以壓縮 JSON 寫入單一 CSV 儲存格。CSV writer 會正確處理逗號、引號與換行。
 
+CSV 儲存格若以 `=`、`+`、`-` 或 `@` 開頭，工具會加上單引號，避免 Excel 或試算表將稽核內容解讀成公式。這項中和只套用於 CSV；JSON 與 JSON Lines 保留服務端傳回的原始值。
+
 * * *
 
 ## 未知欄位

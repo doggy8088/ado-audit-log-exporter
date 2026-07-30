@@ -56,13 +56,21 @@ CLI 在輸出檔同目錄使用暫存檔，完成所有頁面後才持久化。�
 
 * * *
 
+## CSV 試算表安全
+
+稽核欄位可能受使用者名稱、專案名稱或 HTTP User-Agent 影響。CSV 輸出會在以 `=`、`+`、`-` 或 `@` 開頭的儲存格前加上單引號，避免 Excel 或其他試算表直接執行公式。JSON 與 JSON Lines 不會修改原始資料。
+
+* * *
+
 ## npm 供應鏈
 
 - npm tarball 以 `files` allowlist 控制內容
 - 原生壓縮檔由 GitHub-hosted runner 建置
 - 每個壓縮檔附 SHA-256
 - postinstall 強制核對 checksum
+- postinstall 會拒絕 musl，避免下載無法執行的 GNU 資產
 - npm 發布前確認所有 Release URL
+- Release 工作流程不覆寫既有壓縮檔與 checksum
 - trusted publishing 使用短效 OIDC
 - 公開 package 與公開 repository 讓 npm 自動產生 provenance
 

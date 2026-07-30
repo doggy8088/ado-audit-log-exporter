@@ -161,7 +161,14 @@ impl AuditClient {
 
             match result {
                 Ok(response) if response.status().is_success() => {
-                    let bytes = response.bytes().await.map_err(AuditError::Transport)?;
+                    let bytes = match response.bytes().await {
+                        Ok(bytes) => bytes,
+                        Err(_) if attempt < self.retry_policy.max_retries => {
+                            sleep(self.exponential_delay(attempt)).await;
+                            continue;
+                        }
+                        Err(error) => return Err(AuditError::Transport(error)),
+                    };
                     let payload =
                         serde_json::from_slice::<Value>(&bytes).map_err(AuditError::InvalidJson)?;
                     return parse_page(payload);

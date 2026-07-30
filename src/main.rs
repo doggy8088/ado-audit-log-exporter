@@ -73,8 +73,8 @@ struct Cli {
     batch_size: u16,
 
     /// 每次 HTTP 要求的逾時秒數
-    #[arg(long, default_value_t = 30.0, value_parser = parse_positive_f64)]
-    timeout: f64,
+    #[arg(long, default_value = "30", value_parser = parse_positive_duration)]
+    timeout: StdDuration,
 
     /// 暫時性錯誤的重試次數
     #[arg(long, default_value_t = 4)]
@@ -121,7 +121,7 @@ async fn main() -> Result<()> {
         .with_skip_aggregation(!cli.aggregate_access_log);
     let authentication = Authentication::from_env()?;
     let client = AuditClient::new(&cli.organization, authentication)?
-        .with_timeout(StdDuration::from_secs_f64(cli.timeout))?
+        .with_timeout(cli.timeout)?
         .with_retry_policy(RetryPolicy {
             max_retries: cli.retries,
             ..RetryPolicy::default()
@@ -247,7 +247,7 @@ fn csv_record(entry: &AuditLogEntry) -> Vec<String> {
         .iter()
         .map(|(key, value)| (key.clone(), value.clone()))
         .collect::<BTreeMap<_, _>>();
-    vec![
+    [
         optional_text(&entry.id),
         optional_text(&entry.correlation_id),
         optional_text(&entry.activity_id),
@@ -274,6 +274,17 @@ fn csv_record(entry: &AuditLogEntry) -> Vec<String> {
         optional_json(&entry.data),
         serde_json::to_string(&extra_fields).unwrap_or_else(|_| "{}".to_owned()),
     ]
+    .into_iter()
+    .map(neutralize_csv_cell)
+    .collect()
+}
+
+fn neutralize_csv_cell(value: String) -> String {
+    if matches!(value.chars().next(), Some('=' | '+' | '-' | '@')) {
+        format!("'{value}")
+    } else {
+        value
+    }
 }
 
 fn optional_text(value: &Option<String>) -> String {
@@ -294,25 +305,29 @@ fn parse_datetime(value: &str) -> Result<DateTime<Utc>, String> {
     Ok(parsed.with_timezone(&Utc))
 }
 
-fn parse_positive_f64(value: &str) -> Result<f64, String> {
-    let parsed = value
+fn parse_positive_duration(value: &str) -> Result<StdDuration, String> {
+    let seconds = value
         .parse::<f64>()
         .map_err(|_| format!("必須是數字：{value}"))?;
-    if parsed.is_finite() && parsed > 0.0 {
-        Ok(parsed)
-    } else {
-        Err("數值必須大於零".to_owned())
+    if !seconds.is_finite() || seconds <= 0.0 {
+        return Err("數值必須大於零".to_owned());
     }
+    let duration = StdDuration::try_from_secs_f64(seconds)
+        .map_err(|_| "數值超出 timeout 可表示範圍".to_owned())?;
+    if duration.is_zero() {
+        return Err("數值必須至少為 1 奈秒".to_owned());
+    }
+    Ok(duration)
 }
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeMap;
+    use std::{collections::BTreeMap, time::Duration as StdDuration};
 
     use ado_audit_log_exporter::AuditLogEntry;
     use serde_json::json;
 
-    use super::{EventWriter, OutputFormat};
+    use super::{EventWriter, OutputFormat, parse_positive_duration};
 
     #[test]
     fn csv_output_quotes_structured_values() {
@@ -333,6 +348,33 @@ mod tests {
     }
 
     #[test]
+    fn csv_output_neutralizes_formula_prefixes() {
+        let entry = AuditLogEntry {
+            details: Some(json!("@SUM(1,1)")),
+            actor_display_name: Some("-2+3".to_owned()),
+            user_agent: Some("=WEBSERVICE(\"https://example.invalid\")".to_owned()),
+            project_name: Some("+cmd".to_owned()),
+            ..AuditLogEntry::default()
+        };
+        let mut output = Vec::new();
+        let mut writer = EventWriter::new(OutputFormat::Csv, &mut output).expect("writer");
+
+        writer.write_entry(&entry).expect("write");
+        writer.finish().expect("finish");
+
+        let mut reader = csv::Reader::from_reader(output.as_slice());
+        let record = reader
+            .records()
+            .next()
+            .expect("one record")
+            .expect("valid CSV");
+        assert_eq!(&record[8], "'@SUM(1,1)");
+        assert_eq!(&record[13], "'-2+3");
+        assert_eq!(&record[17], "'=WEBSERVICE(\"https://example.invalid\")");
+        assert_eq!(&record[22], "'+cmd");
+    }
+
+    #[test]
     fn jsonl_keeps_unknown_fields() {
         let mut extra_fields = serde_json::Map::new();
         extra_fields.insert("futureField".to_owned(), json!(true));
@@ -350,5 +392,38 @@ mod tests {
         let value: BTreeMap<String, serde_json::Value> =
             serde_json::from_slice(&output).expect("JSON");
         assert_eq!(value["futureField"], true);
+    }
+
+    #[test]
+    fn jsonl_preserves_formula_prefixed_values() {
+        let entry = AuditLogEntry {
+            user_agent: Some("=WEBSERVICE(\"https://example.invalid\")".to_owned()),
+            ..AuditLogEntry::default()
+        };
+        let mut output = Vec::new();
+        let mut writer = EventWriter::new(OutputFormat::Jsonl, &mut output).expect("writer");
+
+        writer.write_entry(&entry).expect("write");
+        writer.finish().expect("finish");
+
+        let value: serde_json::Value = serde_json::from_slice(&output).expect("JSON");
+        assert_eq!(
+            value["userAgent"],
+            "=WEBSERVICE(\"https://example.invalid\")"
+        );
+    }
+
+    #[test]
+    fn timeout_parser_rejects_unrepresentable_and_effectively_zero_values() {
+        assert!(parse_positive_duration("1e300").is_err());
+        assert!(parse_positive_duration("1e-300").is_err());
+    }
+
+    #[test]
+    fn timeout_parser_accepts_positive_fractional_seconds() {
+        assert_eq!(
+            parse_positive_duration("0.25").expect("valid timeout"),
+            StdDuration::from_millis(250)
+        );
     }
 }

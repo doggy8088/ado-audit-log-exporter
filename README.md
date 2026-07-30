@@ -6,11 +6,11 @@
 - 可供 Rust 專案引用的非同步 library
 - 從 GitHub Releases 下載原生執行檔的 npm 薄包裝
 - JSON、JSON Lines 與 CSV 三種輸出格式
-- macOS、Linux 與 Windows 的 x64 或 ARM64 執行檔
+- macOS、GNU/Linux 與 Windows 的 x64 或 ARM64 執行檔
 
 **工具只透過 REST API 讀取稽核記錄，不使用 Chrome，也不會把 PAT 寫入命令列參數、輸出檔或日誌。**
 
-目前最新發布版本為 `0.1.1`。**GitHub Release 與 npm 套件已公開；crates.io crate 尚未發布。**
+目前最新發布版本為 `0.1.1`，原始碼已準備 `0.1.2` 修補版本。**`0.1.1` 的 GitHub Release 與 npm 套件已公開；crates.io crate 尚未發布。**
 
 * * *
 
@@ -20,11 +20,13 @@
 |---|---|---|---|
 | macOS | Apple Silicon | `aarch64-apple-darwin` | `.tar.xz` 與 `.sha256` |
 | macOS | Intel x64 | `x86_64-apple-darwin` | `.tar.xz` 與 `.sha256` |
-| Linux | ARM64 | `aarch64-unknown-linux-gnu` | `.tar.xz` 與 `.sha256` |
-| Linux | x64 | `x86_64-unknown-linux-gnu` | `.tar.xz` 與 `.sha256` |
+| GNU/Linux | ARM64 | `aarch64-unknown-linux-gnu` | `.tar.xz` 與 `.sha256` |
+| GNU/Linux | x64 | `x86_64-unknown-linux-gnu` | `.tar.xz` 與 `.sha256` |
 | Windows | x64 | `x86_64-pc-windows-msvc` | `.zip` 與 `.sha256` |
 
 npm 套件本身不包含原生執行檔。安裝時會依平台從同版本的 GitHub Release 下載壓縮檔，驗證 SHA-256 後再安裝，因此 npm 套件維持精簡。
+
+`0.1.2` 起的 GNU/Linux 資產以 Debian 11 的 glibc 2.31 為建置上限，並在 Release 工作流程檢查實際符號版本。npm postinstall 會拒絕 Alpine 等 musl 環境，不會下載無法啟動的 GNU 資產。
 
 * * *
 
@@ -52,7 +54,8 @@ ado-audit-log-exporter --version
 
 需要 Node.js `22.14.0` 以上。npm 安裝程序另需能連線至 GitHub Releases，且系統具有：
 
-- macOS 或 Linux：`tar` 與 xz 支援
+- macOS 或 GNU/Linux：`tar` 與 xz 支援
+- GNU/Linux：glibc 2.31 以上；不支援 musl
 - Windows：PowerShell `Expand-Archive`
 
 ### Cargo
@@ -158,6 +161,8 @@ Azure DevOps 常見欄位包括：
 
 **Azure DevOps 日後新增的未知欄位不會被丟棄。** JSON 與 JSON Lines 會保留原欄位；CSV 會將未知欄位寫入 `extraFields` JSON 欄。
 
+為避免 Excel 或試算表將稽核資料當成公式，CSV 儲存格若以 `=`、`+`、`-` 或 `@` 開頭，會在 CSV 專用輸出層加上單引號。JSON 與 JSON Lines 仍保留原始值。
+
 REST API 官方範例將 `AuditLogQueryResult` 包在最外層 `value` object 中，但實際服務也可能直接回傳結果 object。client 同時接受這兩種結構，另外相容 array 型別的 `value`，避免因固定要求 `value` 為 object 而匯出失敗。
 
 完整欄位與資料型別說明見 [輸出格式](docs/output-formats.md)。
@@ -231,8 +236,8 @@ while let Some(page) = pager.next_page().await? {
 GitHub Actions 包含三個工作流程：
 
 - `ci.yml`：格式、Clippy、Rust 測試、npm 測試與封裝檢查
-- `release.yml`：由 `v*.*.*` 標籤建置五個平台，產生 SHA-256 並建立 GitHub Release
-- `npm-publish.yml`：由 GitHub Release 事件或手動 dispatch 透過 npm trusted publishing 發布
+- `release.yml`：由 `v*.*.*` 標籤建置五個平台，檢查 Linux glibc 上限、產生 SHA-256 並建立 GitHub Release
+- `npm-publish.yml`：核對 tag、Cargo 與 npm 版本後，由 GitHub Release 事件或手動 dispatch 透過 npm trusted publishing 發布
 
 **工作流程不使用 `NPM_TOKEN` 或 `NODE_AUTH_TOKEN`。** npm 發布透過 GitHub Actions OIDC 取得短效憑證，且 npm 會自動產生 provenance。
 
@@ -247,7 +252,9 @@ GitHub Actions 包含三個工作流程：
 - HTTP client 的 `Debug` 不輸出驗證標頭
 - 匯出檔以同目錄暫存檔寫入，成功後才原子替換
 - 預設拒絕覆寫現有檔案
+- CSV 公式前綴只在 CSV 輸出層中和
 - npm 安裝強制核對 SHA-256
+- GitHub Release 既有原生資產不可覆寫
 - npm 發布工作流程採 OIDC，儲存庫不需要長效 npm token
 - `.gitignore` 排除匯出記錄、本機 binary、`.env` 與封裝產物
 
