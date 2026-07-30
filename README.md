@@ -10,7 +10,7 @@
 
 **工具只透過 REST API 讀取稽核記錄，不使用 Chrome，也不會把 PAT 寫入命令列參數、輸出檔或日誌。**
 
-目前準備發布版本為 `0.1.1`。**GitHub Release 與 npm 的 `0.1.0` 已公開；crates.io crate 尚未發布。**
+目前最新發布版本為 `0.1.1`。**GitHub Release 與 npm 套件已公開；crates.io crate 尚未發布。**
 
 * * *
 
@@ -232,11 +232,11 @@ GitHub Actions 包含三個工作流程：
 
 - `ci.yml`：格式、Clippy、Rust 測試、npm 測試與封裝檢查
 - `release.yml`：由 `v*.*.*` 標籤建置五個平台，產生 SHA-256 並建立 GitHub Release
-- `npm-publish.yml`：由 GitHub Release 事件透過 npm trusted publishing 發布
+- `npm-publish.yml`：由 GitHub Release 事件或手動 dispatch 透過 npm trusted publishing 發布
 
 **工作流程不使用 `NPM_TOKEN` 或 `NODE_AUTH_TOKEN`。** npm 發布透過 GitHub Actions OIDC 取得短效憑證，且 npm 會自動產生 provenance。
 
-`0.1.0` 已由維護者完成人工 bootstrap。從 `0.1.1` 起，GitHub Release 建立後由 `npm-publish.yml` 透過 trusted publishing 發布。完整流程見 [發布手冊](docs/releasing.md)。
+`0.1.0` 已由維護者完成人工 bootstrap；`0.1.1` 已驗證 `npm-publish.yml` 可透過 OIDC trusted publishing 發布。Release workflow 使用 `GITHUB_TOKEN` 建立 Release 時，GitHub 的遞迴保護不會再觸發另一個 workflow，因此需在 Release 完成後手動 dispatch npm workflow。完整流程見 [發布手冊](docs/releasing.md)。
 
 * * *
 

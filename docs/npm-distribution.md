@@ -98,7 +98,7 @@ npm CLI 會偵測 GitHub Actions 的 OIDC 環境，交換短效發布憑證。�
 NPM_TRUSTED_PUBLISHING_ENABLED=true
 ```
 
-`0.1.0` 已完成人工 bootstrap。從 `0.1.1` 起，在 npm 端綁定 Trusted Publisher 後，必須將此變數設為 `true`，GitHub Release 建立時才會觸發 OIDC 發布。
+`0.1.0` 已完成人工 bootstrap，`0.1.1` 已完成 OIDC Trusted Publishing 驗證。在 npm 端綁定 Trusted Publisher 後，必須將此變數設為 `true`，`npm-publish.yml` 才會執行 OIDC 發布。由 Release workflow 的 `GITHUB_TOKEN` 建立 Release 時，需在資產完成後手動 dispatch npm workflow。
 
 * * *
 

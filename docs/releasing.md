@@ -1,6 +1,6 @@
 # 發布流程
 
-`0.1.0` 已完成 GitHub Release 與 npm 人工 bootstrap。目前準備發布的 patch 版本是 `0.1.1`。
+`0.1.0` 已完成 npm 人工 bootstrap；`0.1.1` 已完成 GitHub Release 與 npm OIDC Trusted Publishing。crates.io crate 尚未發布。
 
 **GitHub Release 與 npm 都由 GitHub Actions 處理；crates.io 仍保留人工發布。**
 
@@ -165,14 +165,21 @@ node npm/prepublish-check.cjs
 
 * * *
 
-## 七、驗證 npm Trusted Publishing
+## 七、觸發並驗證 npm Trusted Publishing
 
-GitHub Release published 事件會觸發 `npm-publish.yml`：
+Release workflow 使用 `GITHUB_TOKEN` 建立 Release。依 GitHub 的遞迴保護規則，這個 `release.published` 事件不會再建立另一個 workflow run，因此 Release 完成後必須手動 dispatch：
 
 ```sh
+gh workflow run npm-publish.yml \
+  --ref main \
+  -f tag=v0.1.1
 gh run list --workflow npm-publish.yml --limit 5
 gh run watch
 ```
+
+若 Release 是由工作流程外部建立，`release.published` 仍會直接觸發 `npm-publish.yml`。
+
+參考：[GitHub Docs：When `GITHUB_TOKEN` triggers workflow runs](https://docs.github.com/en/actions/concepts/security/github_token#when-github_token-triggers-workflow-runs)
 
 成功後確認：
 

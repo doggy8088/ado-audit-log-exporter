@@ -28,6 +28,6 @@
 
 ## 目前發布狀態
 
-**目前準備發布版本為 `0.1.1`；GitHub Release 與 npm 的 `0.1.0` 已公開，crates.io crate 尚未發布。**
+**目前最新發布版本為 `0.1.1`；GitHub Release 與 npm 套件已公開，crates.io crate 尚未發布。**
 
-`0.1.1` 使用 GitHub Actions 建立跨平台 Release，並透過 npm trusted publishing 發布。操作與驗證方式見 [發布手冊](releasing.md)。
+`0.1.1` 已使用 GitHub Actions 建立跨平台 Release，並透過 npm trusted publishing 發布。操作與驗證方式見 [發布手冊](releasing.md)。

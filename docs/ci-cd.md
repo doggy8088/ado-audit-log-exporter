@@ -68,6 +68,10 @@ tag 版本 = Cargo.toml 版本 = package.json 版本
 - GitHub Release published
 - 維護者手動 workflow dispatch，並指定既有 Release tag
 
+Release workflow 以 `GITHUB_TOKEN` 建立 Release 時，GitHub 不會讓該事件再啟動另一個 workflow，以避免遞迴執行。因此標籤觸發的自動 Release 完成後，維護者必須使用 `workflow_dispatch` 啟動 npm 發布；若 Release 是由工作流程外部建立，`release.published` 仍可直接觸發。
+
+參考：[GitHub Docs：When `GITHUB_TOKEN` triggers workflow runs](https://docs.github.com/en/actions/concepts/security/github_token#when-github_token-triggers-workflow-runs)
+
 必要條件：
 
 - npm package 已存在
