@@ -1,0 +1,16 @@
+.DS_Store
+.env
+.env.*
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.coverage
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*ado-audit*.json
+*ado-audit*.jsonl
+*ado-audit*.csv
+audit-logs/
